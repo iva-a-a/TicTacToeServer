@@ -1,5 +1,5 @@
 //
-//  domain/model/boardDomain.swift
+//  BoardDomain.swift
 //  TicTacToe
 
 import Foundation
