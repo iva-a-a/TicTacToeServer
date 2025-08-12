@@ -3,8 +3,8 @@
 //  TicTacToe
 
 import Vapor
-import di
-import web
+import Di
+import Web
 import Logging
 import NIOCore
 import NIOPosix
@@ -19,7 +19,7 @@ struct AppEntry {
             try LoggingSystem.bootstrap(from: &env)
             
             app = try await Application.make(env)
-            try configure(app!)
+            try await configure(app!)
             try await app!.execute()
         } catch {
             print("Application error: \(error)")
