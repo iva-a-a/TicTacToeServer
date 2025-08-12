@@ -1,111 +1,435 @@
-# TicTacToe
+# TicTacToe API — Vapor Web Framework
 
-💧 A project built with the Vapor web framework. Проект, созданный с помощью веб-платформы Vapor.
+Проект "Крестики-нолики", реализованный на Swift с использованием фреймворка [Vapor](https://vapor.codes).
 
-## Project structure. Cтруктура проекта
+---
 
-The project has the following structure: \
-Проект имеет следующую структуру:
+## Структура проекта
 
 ```
 TicTacToe/
 ├── Package.swift
 ├── Sources/
-│   ├── web/
-│   │   ├── model/
-|   |   |   |── boardWeb.swift
-|   |   |   |── gameWeb.swift
-│   │   ├── controller/
-|   |   |   |── gameController.swift
-│   │   ├── mapper/
-|   |   |   |── mapperWebDomain.swift
-│   ├── domain/
-│   │   ├── model/
-|   |   |   |── boardDomain.swift
-|   |   |   |── gameDomain.swift
-│   │   ├── service/
-|   |   |   |── gameService.swift
-|   |   |   |── gameServiceImpl.swift
-│   ├── datasource/
-│   │   ├── model/
-|   |   |   |── boardDts.swift
-|   |   |   |── gameDts.swift
-|   |   |   |── gameStore.swift
-│   │   ├── repository/
-|   |   |   |── gameRepository.swift
-|   |   |   |── gameRepositoryImpl.swift
-│   │   ├── mapper/
-|   |   |   |── mapperDtsDomain.swift
-│   ├── di/
-│   │   ├──сontainerProvider.swift
-├── App/
-│   ├──configure.swift
-│   ├──main.swift
-│   ├──routes.swift
+│   ├── Web/                # Работа с HTTP-запросами (API)
+│   │   ├── Model/
+│   │   ├── Controllers/
+│   │   ├── Mapper/
+│   │   ├── Auth/
+│   ├── Domain/             # Бизнес-логика
+│   │   ├── Model/
+│   │   ├── Service/
+│   ├── Datasource/         # Работа с данными и хранилищем
+│   │   ├── Model/
+│   │   ├── RepositoryDB/
+│   │   ├── Mapper/
+│   │   ├── Migration/
+│   ├── Di/                 # DI контейнер (внедрение зависимостей)
+├── App/                    # Конфигурация приложения
+│   ├── configure.swift
+│   ├── main.swift
+│   ├── routes.swift
+├── Tests/                  # Тестирование
+│   ├── AppTests/
 ```
 
+---
 
-The project is divided into four main layers, each of which is a separate Swift package and is responsible for its own part of the logic: \
-Проект разделён на четыре основных слоя, каждый из которых является отдельным Swift-пакетом и отвечает за свою часть логики: 
+## Быстрый старт
 
-1) Domain (Business Logic. Бизнес-логика)
+### Предварительная настройка PostgreSQL
 
-- Contains the basic logic of the game. Содержит основную логику игры.
-- Does not depend on external frameworks. Не зависит от внешних фреймворков.
+1. Запустить PostgreSQL и подключиться:
 
-2) Datasource (Working with data. Работа с данными)
+```bash
+psql postgres
+```
 
-- Storing game states. Хранение состояний игр.
-- Data transformation between layers. Преобразование данных между слоями (Domain <-> Datasource).
+2. Создать пользователя и БД:
 
-3) Web (API for the client. API для клиента)
+```sql
+CREATE ROLE postgres WITH 
+    LOGIN 
+    SUPERUSER 
+    CREATEDB 
+    CREATEROLE 
+    REPLICATION 
+    BYPASSRLS 
+    PASSWORD 'postgres';
 
-- Accepts HTTP requests, returns JSON. Принимает HTTP-запросы, возвращает JSON.
-- Validates the input data. Валидирует входные данные.
+CREATE DATABASE tictactoe_db;
+```
 
-4) DI (Dependency Injection. Внедрение зависимостей)
+Создание БД для тестирования: 
 
-- Manages dependencies between layers. Управляет зависимостями между слоями.
-- Initializes services, repositories, and controllers. Инициализирует сервисы, репозитории и контроллеры.
+```sql
+CREATE DATABASE tictactoe_test;
+```
 
-## Getting Started. Начало работы
+Для удаления БД:
 
-To build the project using the Swift Package Manager, run the following command in the terminal from the root of the project: \
-Чтобы создать проект с помощью менеджера пакетов Swift, запустите следующую команду в терминале из корневого каталога проекта:
+```sql
+DROP DATABASE tictactoe_db;
+DROP DATABASE tictactoe_test;
+```
+
+3. Выйти из psql:
+
+```sql
+\q
+```
+
+---
+
+## Сборка и запуск
+
+### 1. Сборка проекта
 
 ```bash
 swift build
 ```
 
-To run the project and start the server, use the following command: \
-Чтобы запустить проект и запустить сервер, используйте следующую команду:
+### 2. Запуск проекта
+
 ```bash
 swift run
 ```
 
-## Game. Игра 
+Приложение будет доступно по адресу: `http://localhost:8080`
 
-To create a new game, run the following command in the terminal: \
-Для создания новой игры запустите следующую команду в терминале: 
+---
+
+## Аутентификация
+
+### Base64 генерация логина и пароля
 
 ```bash
-curl -X POST http://localhost:8080/newgame
+echo -n "login:password" | base64
 ```
 
-Example of a move: \
-Пример хода:
+Пример результата:
+
+```
+bG9naW46cGFzc3dvcmQ=
+```
+
+### Регистрация пользователя
 
 ```bash
-curl -X POST http://localhost:8080/game/id\
+curl -X POST http://localhost:8080/signup \
   -H "Content-Type: application/json" \
+  -d '{"login": "login", "password": "password"}'
+```
+
+### Вход в систему
+
+```bash
+curl -X POST http://localhost:8080/signin \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ="
+```
+
+Пример ответа:
+
+```json
+{ "userId": "84422212-B0D9-4949-982E-DCFF795694D7" }
+```
+
+---
+
+## Игровой процесс
+
+### Создание новой игры
+
+Создание новой игры без ИИ:
+
+```bash
+curl -X POST http://localhost:8080/newgame \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ=" \
+  -d '{
+    "playWithAI": false
+  }'
+```
+
+Создание игры против ИИ:
+
+```bash
+curl -X POST http://localhost:8080/newgame \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ=" \
+  -d '{
+    "playWithAI": true
+  }'
+```
+
+Пример ответа:
+
+```json
+{
+  "game": {
+    "board": {
+      "grid": [
+        [" ", " ", " "],
+        [" ", " ", " "],
+        [" ", " ", " "]
+      ]
+    },
+    "id": "7D1A87B0-BBB3-467B-A54F-3CA96C80067F",
+    "players": [
+      {
+        "tile": "x",
+        "id": "9C721A64-AFDD-414A-9DC0-86B7B00DEE09"
+      },
+      {
+        "tile": "o",
+        "id": "2FEC605F-ECAB-4AE3-A222-BDF5CF52CC60"
+      }
+    ],
+    "state": {
+      "playerTurn": {
+        "_0": "9C721A64-AFDD-414A-9DC0-86B7B00DEE09"
+      }
+    },
+    "withAI": true
+  },
+  "message": "Game created"
+}
+```
+
+### Получение доступных игр для присоединения
+
+```bash
+curl -X GET http://localhost:8080/games/available \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ="
+```
+
+Пример ответа:
+
+```json
+[
+  {
+    "board" : {
+      "grid" : [
+        [" ", " ", " "],
+        [" "," "," "],
+        [" "," "," "]
+        ]
+    },
+    "id": "39A8A892-86BA-49A3-9591-A3E671352157",
+    "players": [
+      {
+        "id": "A004C12A-B0E9-4504-8785-972AF9F71D70",
+        "tile": "x"
+      }
+    ],
+    "state": {
+      "waitingForPlayers": {
+      },
+    "withAI": false
+    }
+  }
+]
+```
+
+### Присоединение к игре
+
+```bash
+curl -X POST http://localhost:8080/game/C9B11E2F-0D4F-4DB4-BB94-58AE3EBA73B2/join \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ=" \
+  -d '{
+    "playerId": "1F123456-789A-4BCD-ABCD-1234567890AB"
+  }'
+```
+
+Пример ответа:
+
+```json
+{
+  "game": {
+    "board": {
+      "grid": [
+        [" ", " ", " "],
+        [" ", " ", " "],
+        [" ", " ", " "]
+      ]
+    },
+    "id": "C9B11E2F-0D4F-4DB4-BB94-58AE3EBA73B2",
+    "players": [
+      {
+        "tile": "x",
+        "id": "F4C16A84-0A77-4E26-BF4F-FF6B6EBB743F"
+      },
+      {
+        "tile": "o",
+        "id": "1F123456-789A-4BCD-ABCD-1234567890AB"
+      }
+    ],
+    "state": {
+      "playerTurn": {
+        "_0": "F4C16A84-0A77-4E26-BF4F-FF6B6EBB743F"
+      }
+    },
+    "withAI": false
+  },
+  "message": "Joined game"
+}
+```
+
+### Получение текущего состояния игры
+
+```bash
+curl -X GET http://localhost:8080/game/C9B11E2F-0D4F-4DB4-BB94-58AE3EBA73B2 \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ="
+```
+
+Пример ответа:
+
+```json
+{
+  "board": {
+    "grid": [
+      ["x", " ", "o"],
+      [" ", "x", " "],
+      [" ", " ", "o"]
+    ]
+  },
+  "id": "C9B11E2F-0D4F-4DB4-BB94-58AE3EBA73B2",
+  "players": [
+    {
+      "tile": "x",
+      "id": "F4C16A84-0A77-4E26-BF4F-FF6B6EBB743F"
+    },
+    {
+      "tile": "o",
+      "id": "1F123456-789A-4BCD-ABCD-1234567890AB"
+    }
+  ],
+  "state": {
+    "playerTurn": {
+      "_0": "F4C16A84-0A77-4E26-BF4F-FF6B6EBB743F"
+    }
+  },
+  "withAI" : false
+}
+```
+
+### Сделать ход
+
+```bash
+curl -X POST http://localhost:8080/game/158F6579-87BE-4C03-96D8-9850EB92D15E/move \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic dGVzdDpwYXNzd29yZA==" \
   -d '{
     "board": {
       "grid": [
-        [1,0,0],
-        [0,0,0],
-        [0,0,0]
+        ["x", "o", " "],
+        ["x", "o", " "],
+        ["x", " ", " "]
       ]
     },
-    "id": "id"
+    "id": "158F6579-87BE-4C03-96D8-9850EB92D15E",
+    "state": {
+      "playerTurn": {
+        "_0": "24AF0E09-CBCF-477C-A8D5-76BC3A3EFDBC"
+      }
+    },
+    "players": [
+      {
+        "id": "24AF0E09-CBCF-477C-A8D5-76BC3A3EFDBC",
+        "tile": "x"
+      },
+      {
+        "id": "8496B205-9881-4A1B-92C6-4BF7452580B5",
+        "tile": "o"
+      }
+    ],
+    "withAI": false
   }'
+```  
+
+Пример ответа: 
+```json
+  {
+  "game": {
+    "board": {
+      "grid": [
+        ["x", "o", " "],
+        ["x", "o", " "],
+        ["x", " ", " "]
+      ]
+    },
+    "id": "158F6579-87BE-4C03-96D8-9850EB92D15E",
+    "players": [
+      {
+        "id": "24AF0E09-CBCF-477C-A8D5-76BC3A3EFDBC",
+        "tile": "x"
+      },
+      {
+        "id": "8496B205-9881-4A1B-92C6-4BF7452580B5",
+        "tile": "o"
+      }
+    ],
+    "state": {
+      "winner": {
+        "_0" : "24AF0E09-CBCF-477C-A8D5-76BC3A3EFDBC"
+      }
+    },
+    "withAI": false
+  },
+  "message": "Game over: 24AF0E09-CBCF-477C-A8D5-76BC3A3EFDBC wins!"
+}
 ```
+### Получение информации о пользователе
+
+```bash
+curl -X GET http://localhost:8080/user/F4C16A84-0A77-4E26-BF4F-FF6B6EBB743F \
+  -H "Authorization: Basic bG9naW46cGFzc3dvcmQ="
+```
+
+Пример ответа:
+
+```json
+{
+  "id": "F4C16A84-0A77-4E26-BF4F-FF6B6EBB743F",
+  "username": "login"
+}
+```
+
+---
+
+## Тестирование
+
+В проекте используется XCTVapor для тестирования HTTP-эндпоинтов и бизнес-логики.
+
+Тесты расположены в папке:
+
+```
+├── Tests/
+│   ├── AppTests/
+```
+
+Запуск всех тестов из терминала:
+
+```bash
+swift test
+```
+---
+
+## Слои архитектуры
+
+| Слой        | Назначение |
+|-------------|------------|
+| `Domain`    | Бизнес-логика игры, не зависит от фреймворков |
+| `Datasource`| Работа с данными, хранилище и мапперы |
+| `Web`       | Обработка HTTP-запросов, валидация, JSON |
+| `DI`        | Внедрение зависимостей, инициализация компонентов |
+
+---
+
+## Требования
+
+- Swift >= 5.10
+- Vapor >= 4.110.1
+- PostgreSQL установлен и запущен
+
+---
