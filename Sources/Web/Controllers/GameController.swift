@@ -6,190 +6,96 @@ import Vapor
 import Domain
 import Datasource
 
-public struct GameResponse: Content {
-    public let game: GameWeb
-    public var message: String?
-}
-
-public struct CreateGameRequest: Content {
-    let playWithAI: Bool
-    
-    public init(playWithAI: Bool) {
-        self.playWithAI = playWithAI
-    }
-}
-
-public struct JoinGameRequest: Content {
-    public let playerId: UUID
-    
-    public init(playerId: UUID) {
-        self.playerId = playerId
-    }
-}
-
 public final class GameController: Sendable {
-    private let gameRepository: any GameRepository
     private let gameService: any GameService
+    private let gameStatsService: any GameStatsService
     
-    public init(gameRepository: any GameRepository, gameService: any GameService) {
-        self.gameRepository = gameRepository
+    public init(gameService: any GameService, gameStatsService: any GameStatsService) {
         self.gameService = gameService
+        self.gameStatsService = gameStatsService
     }
 
-    public func createGame(req: Request) async throws -> GameResponse {
-        guard let currentUserId = req.auth.get(AuthorizedUser.self)?.id else {
-            throw GameError.invalidAuthorizedUser
+    public func createGame(req: Request) async throws -> GameWeb {
+        guard let userId = req.auth.get(AuthorizedUser.self)?.id else {
+            throw RequestError.invalidAuthorizedUser
         }
-        
-        let createRequest = try req.content.decode(CreateGameRequest.self)
-        
-        let playerX = PlayerDomain(id: currentUserId, tile: .x)
-        let playerO = PlayerDomain(id: UUID(), tile: .o)
-        
-        let players = createRequest.playWithAI ? [playerX, playerO] : [playerX]
-        let gameWithAI = createRequest.playWithAI
-        
-        let gameId = UUID()
-        let state: GameStateDomain = players.count == 2 ? .playerTurn(playerX.id) : .waitingForPlayers
 
-        let game = GameDomain(board: BoardDomain(), id: gameId, state: state, players: players, withAI: gameWithAI)
+        let request = try req.content.decode(CreateGameRequest.self)
+        let game = try await gameService.createGame(by: userId, creator: request.creatorLogin, playWithAI: request.playWithAI)
 
-        try await gameRepository.saveGame(game)
-        
-        return GameResponse(game: MapperGameWebDomain.toWeb(game), message: "Game created")
+        return MapperGameWebDomain.toWeb(game)
     }
+    
+    public func getAvailableGames(req: Request) async throws -> GamesResponse {
+        guard let userId = req.auth.get(AuthorizedUser.self)?.id else {
+            throw RequestError.invalidAuthorizedUser
+        }
 
-    public func getAvailableGames(req: Request) async throws -> [GameWeb] {
-        let games = await gameRepository.getAllGames()
-        guard let currentUserId = req.auth.get(AuthorizedUser.self)?.id else {
-            throw GameError.invalidAuthorizedUser
+        let games = await gameService.getAvailableGames(for: userId)
+        return GamesResponse(games: games.map(MapperGameWebDomain.toWeb))
+    }
+    
+    public func getInProgressGames(req: Request) async throws -> GamesResponse {
+        guard let userId = req.auth.get(AuthorizedUser.self)?.id else {
+            throw RequestError.invalidAuthorizedUser
         }
-        let available = games.filter { game in
-            game.state == .waitingForPlayers && game.players.count == 1 &&
-            !game.players.contains(where: { $0.id == currentUserId })
-        }
-        return available.map(MapperGameWebDomain.toWeb)
+
+        let games = await gameService.getInProgressGames(for: userId)
+        return GamesResponse(games: games.map(MapperGameWebDomain.toWeb))
     }
 
     public func getGame(req: Request) async throws -> GameWeb {
-        guard let gameId = req.parameters.get("gameId", as: UUID.self) else {
-            throw GameError.invalidGameId
-        }
-        guard let game = await gameRepository.getGame(by: gameId) else {
-            throw GameError.gameNotFound
+        let gameId = try validateGameId(from: req)
+        guard let game = await gameService.getGame(by: gameId) else {
+            throw RequestError.gameNotFound
         }
         return MapperGameWebDomain.toWeb(game)
     }
 
-    public func joinGame(req: Request) async throws -> GameResponse {
-        guard let gameId = req.parameters.get("gameId", as: UUID.self) else {
-            throw GameError.invalidGameId
+    public func getFinishedGames(req: Request) async throws -> GamesResponse {
+        guard let userId = req.auth.get(AuthorizedUser.self)?.id else {
+            throw RequestError.invalidAuthorizedUser
         }
-
-        let data = try req.content.decode(JoinGameRequest.self)
-        guard var game = await gameRepository.getGame(by: gameId) else {
-            throw GameError.gameNotFound
-        }
-
-        guard game.players.count == 1 else {
-            throw GameError.invalidCountPlayers
-        }
-
-        let existingTile = game.players[0].tile
-        let newTile: Tile = existingTile == .x ? .o : .x
-        let newPlayer = PlayerDomain(id: data.playerId, tile: newTile)
-
-        game.players.append(newPlayer)
-        game.state = .playerTurn(game.players[0].id)
-
-        try await gameRepository.saveGame(game)
-        return GameResponse(game: MapperGameWebDomain.toWeb(game), message: "Joined game")
+        let games = await gameService.getFinishedGames(for: userId)
+        return GamesResponse(games: games.map(MapperGameWebDomain.toWeb))
     }
 
-    public func makeMove(req: Request) async throws -> GameResponse {
+
+    public func joinGame(req: Request) async throws -> GameWeb {
         let gameId = try validateGameId(from: req)
-        let incomingGame = try req.content.decode(GameWeb.self)
-        try validateIncomingGame(incomingGame, gameId)
-
-        var domainGame = MapperGameWebDomain.toDomain(incomingGame)
-        let existingGame = await gameRepository.getGame(by: gameId)
-        try validateExistingGame(existingGame: existingGame)
+        let request = try req.content.decode(JoinGameRequest.self)
         
-        try validateWithAIUnchanged(existingGame: existingGame!, incomingGame: domainGame)
-
-        try validateMove(for: existingGame!, domainGame: domainGame)
-
-        domainGame = gameService.updateGameState(for: domainGame)
-
-        if gameService.checkGameOver(for: domainGame) {
-            let message = getEndMessage(for: domainGame)
-            return GameResponse(game: MapperGameWebDomain.toWeb(domainGame), message: message)
-        }
-
-        try await gameRepository.saveGame(domainGame)
-
-        if domainGame.withAI {
-            domainGame = gameService.getNextMoveAI(for: domainGame)
-
-            if gameService.checkGameOver(for: domainGame) {
-                let message = getEndMessage(for: domainGame)
-                return GameResponse(game: MapperGameWebDomain.toWeb(domainGame), message: message)
-            }
-            try await gameRepository.saveGame(domainGame)
-        }
-
-        return GameResponse(game: MapperGameWebDomain.toWeb(domainGame), message: nil)
+        let game = try await gameService.joinGame(gameId: gameId, playerId: request.playerId, playerLogin: request.playerLogin)
+        return MapperGameWebDomain.toWeb(game)
     }
+    
+    public func makeMove(req: Request) async throws -> GameWeb {
+        let gameId = try validateGameId(from: req)
+        let request = try req.content.decode(MoveRequest.self)
 
-    private func getEndMessage(for game: GameDomain) -> String {
-        switch game.state {
-        case .draw:
-            return "Game over: Draw!"
-            
-        case .winner(let id):
-            if let winner = game.players.first(where: { $0.id == id }) {
-                if game.withAI && winner.tile == .o {
-                    return "Game over: AI wins!"
-                } else {
-                    return "Game over: \(winner.id) wins!"
-                }
-            } else {
-                return "Game over: Unknown winner"
-            }
-            
-        default:
-            return "Game over"
+        let game = try await gameService.makeMove(gameId: gameId,
+                                                  playerId: request.playerId,
+                                                  row: request.row,
+                                                  col: request.col)
+
+        return MapperGameWebDomain.toWeb(game)
+    }
+    
+    public func getTopPlayers(req: Request) async throws -> PlayersStatsWeb {
+        guard let _ = req.auth.get(AuthorizedUser.self) else {
+            throw RequestError.invalidAuthorizedUser
         }
+
+        let limit = (try? req.query.get(Int.self, at: "limit")) ?? 10
+        let topPlayers = try await gameStatsService.getTopPlayers(limit: limit)
+
+        return PlayersStatsWeb(playersStats: topPlayers.map(MapperPlayerStatsWebDomain.toWeb))
     }
 
     private func validateGameId(from req: Request) throws -> UUID {
         guard let gameId = req.parameters.get("gameId", as: UUID.self) else {
-            throw GameError.invalidGameId
+            throw RequestError.invalidGameId
         }
         return gameId
-    }
-
-    private func validateIncomingGame(_ incomingGame: GameWeb, _ gameId: UUID) throws {
-        guard incomingGame.id == gameId else {
-            throw GameError.gameIdMismatch
-        }
-    }
-
-    private func validateExistingGame(existingGame: GameDomain?) throws {
-        guard existingGame != nil else {
-            throw GameError.gameNotFound
-        }
-    }
-
-    private func validateMove(for existingGame: GameDomain, domainGame: GameDomain) throws {
-        if !gameService.validateMove(for: existingGame, for: domainGame) {
-            throw GameError.invalidMove
-        }
-    }
-    
-    private func validateWithAIUnchanged(existingGame: GameDomain, incomingGame: GameDomain) throws {
-        if existingGame.withAI != incomingGame.withAI {
-            throw GameError.invalidWithAIChange
-        }
     }
 }
