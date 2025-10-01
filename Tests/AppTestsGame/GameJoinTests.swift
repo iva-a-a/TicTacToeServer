@@ -9,7 +9,7 @@ import Domain
 import Web
 import Datasource
 
-final class GameJoinGameTests: XCTestCase {
+final class GameJoinTests: XCTestCase {
     var app: Application!
 
     override func setUp() async throws {
@@ -23,18 +23,19 @@ final class GameJoinGameTests: XCTestCase {
     }
 
     func testSuccessfulJoinGame() throws {
-        let player2 = UUID()
+        let player1Id = UUID()
+        let player2Id = UUID()
 
-        app.middleware.use(AuthorizedUser.testMiddleware(playerId: player2))
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: player1Id))
 
         var createdGameId: UUID?
 
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: false))
+            try req.content.encode(CreateGameRequest(creatorLogin: "player1", playWithAI: false))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            createdGameId = response.game.id
+            let response = try res.content.decode(GameWeb.self)
+            createdGameId = response.id
         })
 
         guard let gameId = createdGameId else {
@@ -42,23 +43,25 @@ final class GameJoinGameTests: XCTestCase {
             return
         }
 
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: player2Id))
         try app.test(.POST, "/game/\(gameId)/join", beforeRequest: { req in
-            try req.content.encode(JoinGameRequest(playerId: player2))
+            try req.content.encode(JoinGameRequest(playerId: player2Id, playerLogin: "player2"))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            XCTAssertEqual(response.game.players.count, 2)
-            XCTAssertEqual(response.game.state, .playerTurn(player2))
+            let response = try res.content.decode(GameWeb.self)
+            XCTAssertEqual(response.players.count, 2)
+            XCTAssertEqual(response.state, .playerTurn(player1Id))
         })
     }
 
     func testJoinNonexistentGameReturnsNotFound() throws {
-        app.middleware.use(AuthorizedUser.testMiddleware(playerId: UUID()))
+        let playerId = UUID()
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: playerId))
 
         let fakeGameId = UUID()
 
         try app.test(.POST, "/game/\(fakeGameId)/join", beforeRequest: { req in
-            try req.content.encode(JoinGameRequest(playerId: UUID()))
+            try req.content.encode(JoinGameRequest(playerId: UUID(), playerLogin: "playerX"))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, GameError.gameNotFound.status)
             XCTAssertTrue(res.body.string.contains(GameError.gameNotFound.reason))
@@ -73,12 +76,11 @@ final class GameJoinGameTests: XCTestCase {
         var gameId: UUID?
 
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: player1))
-
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: false))
+            try req.content.encode(CreateGameRequest(creatorLogin: "player1", playWithAI: false))
         }, afterResponse: { res in
-            let response = try res.content.decode(GameResponse.self)
-            gameId = response.game.id
+            let response = try res.content.decode(GameWeb.self)
+            gameId = response.id
         })
 
         guard let gameId = gameId else {
@@ -88,14 +90,14 @@ final class GameJoinGameTests: XCTestCase {
 
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: player2))
         try app.test(.POST, "/game/\(gameId)/join", beforeRequest: { req in
-            try req.content.encode(JoinGameRequest(playerId: player2))
+            try req.content.encode(JoinGameRequest(playerId: player2, playerLogin: "player2"))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .ok)
         })
 
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: player3))
         try app.test(.POST, "/game/\(gameId)/join", beforeRequest: { req in
-            try req.content.encode(JoinGameRequest(playerId: player3))
+            try req.content.encode(JoinGameRequest(playerId: player3, playerLogin: "player3"))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, GameError.invalidCountPlayers.status)
             XCTAssertTrue(res.body.string.contains(GameError.invalidCountPlayers.reason))
@@ -103,13 +105,14 @@ final class GameJoinGameTests: XCTestCase {
     }
 
     func testJoinGameWithInvalidUUIDPath() throws {
-        app.middleware.use(AuthorizedUser.testMiddleware(playerId: UUID()))
+        let playerId = UUID()
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: playerId))
 
         try app.test(.POST, "/game/invalid-uuid/join", beforeRequest: { req in
-            try req.content.encode(JoinGameRequest(playerId: UUID()))
+            try req.content.encode(JoinGameRequest(playerId: playerId, playerLogin: "playerX"))
         }, afterResponse: { res in
-            XCTAssertEqual(res.status, GameError.invalidGameId.status)
-            XCTAssertTrue(res.body.string.contains(GameError.invalidGameId.reason))
+            XCTAssertEqual(res.status, RequestError.invalidGameId.status)
+            XCTAssertTrue(res.body.string.contains(RequestError.invalidGameId.reason))
         })
     }
 
@@ -117,10 +120,10 @@ final class GameJoinGameTests: XCTestCase {
         let gameId = UUID()
 
         try app.test(.POST, "/game/\(gameId)/join", beforeRequest: { req in
-            try req.content.encode(JoinGameRequest(playerId: UUID()))
+            try req.content.encode(JoinGameRequest(playerId: UUID(), playerLogin: "playerX"))
         }, afterResponse: { res in
-            XCTAssertEqual(res.status, GameError.invalidAuthorizedUser.status)
-            XCTAssertTrue(res.body.string.contains(GameError.invalidAuthorizedUser.reason))
+            XCTAssertEqual(res.status, RequestError.invalidAuthorizedUser.status)
+            XCTAssertTrue(res.body.string.contains(RequestError.invalidAuthorizedUser.reason))
         })
     }
 }

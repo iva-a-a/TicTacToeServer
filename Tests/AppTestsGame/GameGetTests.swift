@@ -1,5 +1,5 @@
 //
-//  GameGetGameTests.swift
+//  GameGetTests.swift
 //  TicTacToe
 
 import XCTest
@@ -9,7 +9,7 @@ import Domain
 import Web
 import Datasource
 
-final class GameGetGameTests: XCTestCase {
+final class GameGetTests: XCTestCase {
     var app: Application!
 
     override func setUp() async throws {
@@ -27,11 +27,11 @@ final class GameGetGameTests: XCTestCase {
         var createdGameId: UUID?
 
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: true))
+            try req.content.encode(CreateGameRequest(creatorLogin: "me", playWithAI: true))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            createdGameId = response.game.id
+            let response = try res.content.decode(GameWeb.self)
+            createdGameId = response.id
         })
 
         guard let gameId = createdGameId else {
@@ -53,8 +53,8 @@ final class GameGetGameTests: XCTestCase {
         app.middleware.use(AuthorizedUser.testMiddleware())
 
         try app.test(.GET, "/game/invalid-uuid") { res in
-            XCTAssertEqual(res.status, GameError.invalidGameId.status)
-            XCTAssertTrue(res.body.string.contains(GameError.invalidGameId.reason))
+            XCTAssertEqual(res.status, RequestError.invalidGameId.status)
+            XCTAssertTrue(res.body.string.contains(RequestError.invalidGameId.reason))
         }
     }
 
@@ -72,8 +72,8 @@ final class GameGetGameTests: XCTestCase {
         let randomGameId = UUID()
 
         try app.test(.GET, "/game/\(randomGameId)") { res in
-            XCTAssertEqual(res.status, GameError.invalidAuthorizedUser.status)
-            XCTAssertTrue(res.body.string.contains(GameError.invalidAuthorizedUser.reason))
+            XCTAssertEqual(res.status, RequestError.invalidAuthorizedUser.status)
+            XCTAssertTrue(res.body.string.contains(RequestError.invalidAuthorizedUser.reason))
         }
     }
 }

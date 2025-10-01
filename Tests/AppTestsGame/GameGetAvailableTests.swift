@@ -1,5 +1,5 @@
 //
-//  GameGetAvailableGamesTests.swift
+//  GameGetAvailableTests.swift
 //  TicTacToe
 
 import XCTest
@@ -9,7 +9,7 @@ import Domain
 import Web
 import Datasource
 
-final class GameGetAvailableGamesTests: XCTestCase {
+final class GameGetAvailableTests: XCTestCase {
     var app: Application!
 
     override func setUp() async throws {
@@ -23,20 +23,22 @@ final class GameGetAvailableGamesTests: XCTestCase {
     }
 
     func testGetAvailableGamesWhenAvailable() throws {
-        let test = UUID()
-        app.middleware.use(AuthorizedUser.testMiddleware(playerId: test))
+        let creatorId = UUID()
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: creatorId))
 
-        let playerId = UUID()
+        let otherUserId = UUID()
 
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: false))
+            try req.content.encode(CreateGameRequest(creatorLogin: "creator1", playWithAI: false))
         }) { res in
             XCTAssertEqual(res.status, .ok)
         }
-        app.middleware.use(AuthorizedUser.testMiddleware(playerId: playerId))
+
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: otherUserId))
         try app.test(.GET, "/games/available") { res in
             XCTAssertEqual(res.status, .ok)
-            let games = try res.content.decode([GameWeb].self)
+            let response = try res.content.decode(GamesResponse.self)
+            let games = response.games
             XCTAssertFalse(games.isEmpty)
             for game in games {
                 XCTAssertEqual(game.players.count, 1)
@@ -50,8 +52,8 @@ final class GameGetAvailableGamesTests: XCTestCase {
 
         try app.test(.GET, "/games/available") { res in
             XCTAssertEqual(res.status, .ok)
-            let games = try res.content.decode([GameWeb].self)
-            XCTAssertTrue(games.isEmpty)
+            let response = try res.content.decode(GamesResponse.self)
+            XCTAssertTrue(response.games.isEmpty)
         }
     }
 
@@ -67,15 +69,15 @@ final class GameGetAvailableGamesTests: XCTestCase {
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: currentUserId))
 
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: false))
+            try req.content.encode(CreateGameRequest(creatorLogin: "me", playWithAI: false))
         }) { res in
             XCTAssertEqual(res.status, .ok)
         }
 
         try app.test(.GET, "/games/available") { res in
             XCTAssertEqual(res.status, .ok)
-            let games = try res.content.decode([GameWeb].self)
-            XCTAssertTrue(games.isEmpty, "Current user's own game should not be listed as available")
+            let response = try res.content.decode(GamesResponse.self)
+            XCTAssertTrue(response.games.isEmpty, "Current user's own game should not be listed as available")
         }
     }
     
@@ -85,14 +87,14 @@ final class GameGetAvailableGamesTests: XCTestCase {
         
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: user1))
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: false))
+            try req.content.encode(CreateGameRequest(creatorLogin: "p1", playWithAI: false))
         }) { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            let gameId = response.game.id
+            let response = try res.content.decode(GameWeb.self)
+            let gameId = response.id
 
             try app.test(.POST, "/game/\(gameId)/join", beforeRequest: { req in
-                try req.content.encode(JoinGameRequest(playerId: user2))
+                try req.content.encode(JoinGameRequest(playerId: user2, playerLogin: "p2"))
             }) { res in
                 XCTAssertEqual(res.status, .ok)
             }
@@ -102,8 +104,8 @@ final class GameGetAvailableGamesTests: XCTestCase {
 
         try app.test(.GET, "/games/available") { res in
             XCTAssertEqual(res.status, .ok)
-            let games = try res.content.decode([GameWeb].self)
-            XCTAssertTrue(games.isEmpty, "Game with 2 players should not be listed as available")
+            let response = try res.content.decode(GamesResponse.self)
+            XCTAssertTrue(response.games.isEmpty, "Game with 2 players should not be listed as available")
         }
     }
     
@@ -113,16 +115,16 @@ final class GameGetAvailableGamesTests: XCTestCase {
 
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: user1))
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: true))
+            try req.content.encode(CreateGameRequest(creatorLogin: "p1", playWithAI: true))
         }) { res in
             XCTAssertEqual(res.status, .ok)
         }
-        app.middleware.use(AuthorizedUser.testMiddleware(playerId: user2))
 
+        app.middleware.use(AuthorizedUser.testMiddleware(playerId: user2))
         try app.test(.GET, "/games/available") { res in
             XCTAssertEqual(res.status, .ok)
-            let games = try res.content.decode([GameWeb].self)
-            XCTAssertTrue(games.isEmpty, "Game not in waitingForPlayers state should not be listed")
+            let response = try res.content.decode(GamesResponse.self)
+            XCTAssertTrue(response.games.isEmpty, "Game not in waitingForPlayers state should not be listed")
         }
     }
 
@@ -132,22 +134,24 @@ final class GameGetAvailableGamesTests: XCTestCase {
         let currentUser = UUID()
 
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: user1))
+        try app.test(.POST, "/newgame", beforeRequest: { req in
+            try req.content.encode(CreateGameRequest(creatorLogin: "p1", playWithAI: false))
+        }) { res in
+            XCTAssertEqual(res.status, .ok)
+        }
+
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: user2))
-        for _ in [user1, user2] {
-            try app.test(.POST, "/newgame", beforeRequest: { req in
-                try req.content.encode(CreateGameRequest(playWithAI: false))
-            }) { res in
-                XCTAssertEqual(res.status, .ok)
-            }
+        try app.test(.POST, "/newgame", beforeRequest: { req in
+            try req.content.encode(CreateGameRequest(creatorLogin: "p2", playWithAI: false))
+        }) { res in
+            XCTAssertEqual(res.status, .ok)
         }
 
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: currentUser))
-
         try app.test(.GET, "/games/available") { res in
             XCTAssertEqual(res.status, .ok)
-            let games = try res.content.decode([GameWeb].self)
-            XCTAssertEqual(games.count, 2, "Should return all available games not created by current user")
+            let response = try res.content.decode(GamesResponse.self)
+            XCTAssertEqual(response.games.count, 2, "Should return all available games not created by current user")
         }
     }
-
 }

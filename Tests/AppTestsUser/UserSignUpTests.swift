@@ -30,24 +30,26 @@ final class UserSignUpTests: XCTestCase {
         app.userRepository = mock
         
         try app.test(.POST, "/signup") { req in
-            try req.content.encode(SignUpRequest("newuser", "validPassword123"))
+            try req.content.encode(JwtRequest(login: "newuser", password: "validPassword123"))
         } afterResponse: { res in
-            XCTAssertEqual(res.status, .created)
+            XCTAssertEqual(res.status, .ok)
+            let response = try res.content.decode(UserIdResponse.self)
+            XCTAssertNotNil(response.id)
         }
     }
-    
+
     func testSignUpWithShortLogin() throws {
         try app.test(.POST, "/signup") { req in
-            try req.content.encode(SignUpRequest("ab", "validPassword123"))
+            try req.content.encode(JwtRequest(login: "ab", password: "validPassword123"))
         } afterResponse: { res in
             XCTAssertEqual(res.status, .unauthorized)
             XCTAssertContains(res.body.string, AuthenticationError.invalidLogin.reason)
         }
     }
-    
+
     func testSignUpWithShortPassword() throws {
         try app.test(.POST, "/signup") { req in
-            try req.content.encode(SignUpRequest("validuser", "12345"))
+            try req.content.encode(JwtRequest(login: "validuser", password: "12345"))
         } afterResponse: { res in
             XCTAssertEqual(res.status, .unauthorized)
             XCTAssertContains(res.body.string, AuthenticationError.invalidPassword.reason)
@@ -55,20 +57,23 @@ final class UserSignUpTests: XCTestCase {
     }
 
     func testSignUpWithExistingLogin()  throws {
+
         let mock = MockUserRepository(
             createHandler: { _ in },
             getByLoginHandler: { _ in nil }
         )
         app.userRepository = mock
-        
+
         try app.test(.POST, "/signup") { req in
-            try req.content.encode(SignUpRequest("newuser", "validPassword123"))
+            try req.content.encode(JwtRequest(login: "newuser", password: "validPassword123"))
         } afterResponse: { res in
-            XCTAssertEqual(res.status, .created)
+            XCTAssertEqual(res.status, .ok)
+            let signupResponse = try res.content.decode(UserIdResponse.self)
+            XCTAssertNotNil(signupResponse.id)
         }
-        
+
         try app.test(.POST, "/signup") { req in
-            try req.content.encode(SignUpRequest("newuser", "validPassword123"))
+            try req.content.encode(JwtRequest(login: "newuser", password: "validPassword"))
         } afterResponse: { res in
             XCTAssertEqual(res.status, .conflict)
             XCTAssertContains(res.body.string, UserError.unavailableLogin.reason)
@@ -77,6 +82,24 @@ final class UserSignUpTests: XCTestCase {
 
     func testSignUpWithEmptyBody() throws {
         try app.test(.POST, "/signup", headers: ["Content-Type": "application/json"], body: ByteBuffer(string: "{}")) { res in
+            XCTAssertEqual(res.status, .badRequest)
+        }
+    }
+    
+    func testSignUpWithInvalidJSON() throws {
+        try app.test(.POST, "/signup", headers: ["Content-Type": "application/json"], body: ByteBuffer(string: "invalid json")) { res in
+            XCTAssertEqual(res.status, .badRequest)
+        }
+    }
+    
+    func testSignUpWithMissingFields() throws {
+        let invalidJson = """
+        {
+            "login": "testuser"
+        }
+        """
+        
+        try app.test(.POST, "/signup", headers: ["Content-Type": "application/json"], body: ByteBuffer(string: invalidJson)) { res in
             XCTAssertEqual(res.status, .badRequest)
         }
     }

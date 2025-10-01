@@ -1,5 +1,5 @@
 //
-//  GameCreateGameTests.swift
+//  GameCreateTests.swift
 //  TicTacToe
 //
 
@@ -26,12 +26,12 @@ final class GameCreateTests: XCTestCase {
         let playerId = UUID()
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: playerId))
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: true))
+            try req.content.encode(CreateGameRequest(creatorLogin: "Alice", playWithAI: true))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            XCTAssertEqual(response.game.players.count, 2)
-            XCTAssertEqual(response.game.state, .playerTurn(playerId))
+            let response = try res.content.decode(GameWeb.self)
+            XCTAssertEqual(response.players.count, 2)
+            XCTAssertEqual(response.state, .playerTurn(playerId))
         })
     }
 
@@ -39,12 +39,12 @@ final class GameCreateTests: XCTestCase {
         let playerId = UUID()
         app.middleware.use(AuthorizedUser.testMiddleware(playerId: playerId))
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: false))
+            try req.content.encode(CreateGameRequest(creatorLogin: "Bob", playWithAI: false))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            XCTAssertEqual(response.game.players.count, 1)
-            XCTAssertEqual(response.game.state, .waitingForPlayers)
+            let response = try res.content.decode(GameWeb.self)
+            XCTAssertEqual(response.players.count, 1)
+            XCTAssertEqual(response.state, .waitingForPlayers)
         })
     }
 
@@ -54,14 +54,18 @@ final class GameCreateTests: XCTestCase {
         {
           "playWithAI": "yes"
         """
-        try app.test(.POST, "/newgame", headers: ["Content-Type": "application/json"], body: ByteBuffer(string: malformedJson)) { res in
+        try app.test(.POST, "/newgame",
+                     headers: ["Content-Type": "application/json"],
+                     body: ByteBuffer(string: malformedJson)) { res in
             XCTAssertEqual(res.status, .badRequest)
         }
     }
 
     func testCreateGameEmptyRequest() throws {
         app.middleware.use(AuthorizedUser.testMiddleware())
-        try app.test(.POST, "/newgame", headers: ["Content-Type": "application/json"], body: ByteBuffer(string: "{}")) { res in
+        try app.test(.POST, "/newgame",
+                     headers: ["Content-Type": "application/json"],
+                     body: ByteBuffer(string: "{}")) { res in
             XCTAssertEqual(res.status, .badRequest)
         }
     }
@@ -69,35 +73,36 @@ final class GameCreateTests: XCTestCase {
     func testCreateGameReturnsExpectedResponse() throws {
         app.middleware.use(AuthorizedUser.testMiddleware())
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: true))
+            try req.content.encode(CreateGameRequest(creatorLogin: "Charlie", playWithAI: true))
         }, afterResponse: { res in
-            let response = try res.content.decode(GameResponse.self)
-            XCTAssertNotNil(response.game)
-            XCTAssertEqual(response.message, "Game created")
+            let response = try res.content.decode(GameWeb.self)
+            XCTAssertNotNil(response.id)
+            XCTAssertEqual(response.withAI, true)
         })
     }
 
     func testPlayerTilesAssignedCorrectly() throws {
         app.middleware.use(AuthorizedUser.testMiddleware())
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: true))
+            try req.content.encode(CreateGameRequest(creatorLogin: "Dave", playWithAI: true))
         }) { res in
             XCTAssertEqual(res.status, .ok)
-            let response = try res.content.decode(GameResponse.self)
-            XCTAssertEqual(response.game.players.count, 2)
-            XCTAssertEqual(response.game.players[0].tile, .x)
-            XCTAssertEqual(response.game.players[1].tile, .o)
+            let response = try res.content.decode(GameWeb.self)
+            XCTAssertEqual(response.players.count, 2)
+            XCTAssertEqual(response.players[0].tile, .x)
+            XCTAssertEqual(response.players[1].tile, .o)
         }
     }
 
     func testUnauthorizedCreateGameFails() throws {
         try app.test(.POST, "/newgame", beforeRequest: { req in
-            try req.content.encode(CreateGameRequest(playWithAI: true))
+            try req.content.encode(CreateGameRequest(creatorLogin: "Eve", playWithAI: true))
         }, afterResponse: { res in
             XCTAssertEqual(res.status, .unauthorized)
         })
     }
 }
+
 
 extension AuthorizedUser {
     static func testMiddleware() -> AsyncMiddleware {
