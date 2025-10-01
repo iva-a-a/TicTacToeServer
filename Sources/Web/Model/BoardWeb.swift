@@ -6,37 +6,10 @@ import Foundation
 import Domain
 import Vapor
 
-public enum TileWeb: Codable, Sendable {
-    case empty
-    case x
-    case o
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let raw = try container.decode(String.self)
-        switch raw {
-        case "x": self = .x
-        case "o": self = .o
-        case " ", "empty": self = .empty
-        default:
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Invalid tile value: \(raw)"
-            )
-        }
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .empty:
-            try container.encode(" ")
-        case .x:
-            try container.encode("x")
-        case .o:
-            try container.encode("o")
-        }
-    }
+public enum TileWeb: Int, Codable, Sendable {
+    case empty = 0
+    case x = 1
+    case o = 2
 }
 
 public struct BoardWeb: Content {

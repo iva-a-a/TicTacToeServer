@@ -7,22 +7,25 @@ import Domain
 
 public struct MapperGameWebDomain {
     public static func toDomain(_ web: GameWeb) -> GameDomain {
+        
         return GameDomain(
             board: MapperBoardWebDomain.toDomain(web.board),
             id: web.id,
             state: MapperGameStateWebDomain.toDomain(web.state),
             players: MapperPlayerWebDomain.toDomainList(web.players),
-            withAI: web.withAI
+            withAI: web.withAI,
+            dateСreation: MapperDateWebDomain.toDomain(web.dateСreation)
         )
     }
 
     public static func toWeb(_ domain: GameDomain) -> GameWeb {
         return GameWeb(
-            board: MapperBoardWebDomain.toWeb(domain.board),
             id: domain.id,
+            board: MapperBoardWebDomain.toWeb(domain.board),
             state: MapperGameStateWebDomain.toWeb(domain.state),
             players: MapperPlayerWebDomain.toWebList(domain.players),
-            withAI: domain.withAI
+            withAI: domain.withAI,
+            dateСreation: MapperDateWebDomain.toWeb(domain.dateСreation)
         )
     }
 }
@@ -83,11 +86,11 @@ public struct MapperGameStateWebDomain {
 
 public struct MapperPlayerWebDomain {
     static func toDomain(_ web: PlayerWeb) -> PlayerDomain {
-        return PlayerDomain(id: web.id, tile: MapperTileWebDomain.toDomain(web.tile))
+        return PlayerDomain(id: web.id, login: web.login, tile: MapperTileWebDomain.toDomain(web.tile))
     }
 
     static func toWeb(_ domain: PlayerDomain) -> PlayerWeb {
-        return PlayerWeb(id: domain.id, tile: MapperTileWebDomain.toWeb(domain.tile))
+        return PlayerWeb(id: domain.id, login: domain.login, tile: MapperTileWebDomain.toWeb(domain.tile))
     }
 
     static func toDomainList(_ webList: [PlayerWeb]) -> [PlayerDomain] {
@@ -96,5 +99,24 @@ public struct MapperPlayerWebDomain {
 
     static func toWebList(_ domainList: [PlayerDomain]) -> [PlayerWeb] {
         return domainList.map { toWeb($0) }
+    }
+}
+
+public struct MapperDateWebDomain {
+    public static func toDomain(_ web: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = Date()
+        if let parsedDate = formatter.date(from: web) {
+            date = parsedDate
+        }
+        return date
+    }
+    
+    public static func toWeb(_ domain: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let dateString = formatter.string(from: domain)
+        return dateString
     }
 }
