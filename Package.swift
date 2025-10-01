@@ -16,6 +16,8 @@ let package = Package(
         // Fluent
         .package(url: "https://github.com/vapor/fluent.git", from: "4.0.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.0.0"),
+        // JWT
+        .package(url: "https://github.com/vapor/jwt-kit.git", from: "4.7.0"),
     ],
     targets: [
         .executableTarget(
@@ -27,6 +29,7 @@ let package = Package(
                 .product(name: "Swinject", package: "Swinject"),
                 .product(name: "Fluent", package: "fluent"),
                 .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
+                .product(name: "JWTKit", package: "jwt-kit"),
                 .target(name: "Web"),
                 .target(name: "Domain"),
                 .target(name: "Datasource"),
@@ -40,9 +43,9 @@ let package = Package(
             name: "Domain",
             dependencies: [
                 .product(name: "Vapor", package: "vapor"),
+                .product(name: "JWTKit", package: "jwt-kit")
             ],
             path: "Sources/Domain",
-            sources: ["Model", "Service"],
             swiftSettings: swiftSettings
         ),
 
@@ -54,7 +57,6 @@ let package = Package(
                 .product(name: "Vapor", package: "vapor"),
             ],
             path: "Sources/Datasource",
-            sources: ["Model", "RepositoryDB", "Mapper", "Migration"],
             swiftSettings: swiftSettings
         ),
         
@@ -64,9 +66,9 @@ let package = Package(
                 .target(name: "Domain"),
                 .target(name: "Datasource"),
                 .product(name: "Vapor", package: "vapor"),
+                .product(name: "JWTKit", package: "jwt-kit")
             ],
             path: "Sources/Web",
-            sources: ["Model", "Controllers", "Mapper", "Auth"],
             swiftSettings: swiftSettings
         ),
         
@@ -78,19 +80,19 @@ let package = Package(
                 .target(name: "Web"),
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "Swinject", package: "Swinject"),
+                .product(name: "JWTKit", package: "jwt-kit")
             ],
             path: "Sources/Di",
             swiftSettings: swiftSettings
         ),
         
         .testTarget(
-            name: "AppTests",
+            name: "Tests",
             dependencies: [
                 .target(name: "App"),
                 .product(name: "XCTVapor", package: "vapor"),
                 .target(name: "Web")
             ],
-            path: "Tests/AppTests"
         )
     ]
 )
