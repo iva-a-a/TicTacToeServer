@@ -5,15 +5,6 @@
 import Vapor
 import Domain
 
-public struct UserAuthResponse: Content {
-    public let userId: UUID
-}
-
-public struct UserResponse: Content {
-    public let id: UUID
-    public let login: String
-}
-
 public final class UserController: Sendable {
     private let userService: any UserService
 
@@ -21,26 +12,46 @@ public final class UserController: Sendable {
         self.userService = userService
     }
 
-    public func signUp(req: Request) async throws -> HTTPStatus {
-        let request = try req.content.decode(SignUpRequest.self)
-        try UserValidator.validate(request.login, request.password)
-        try await userService.register(req: MapperSignUpWebDomain.toDomain(request))
-        return .created
+    public func signUp(req: Request) async throws -> UserIdResponse {
+        let request = try req.content.decode(JwtRequest.self)
+        let id = try await userService.register(req: MapperJwtWebDomain.toDomain(request))
+        return UserIdResponse(id: id)
     }
-    
-    public func signIn(req: Request) async throws -> UserAuthResponse {
-        guard let user = req.auth.get(AuthorizedUser.self) else {
-            throw GameError.invalidAuthorizedUser
-        }
-        return UserAuthResponse(userId: user.id)
+
+    public func signIn(req: Request) async throws -> JwtResponse {
+        let request = try req.content.decode(JwtRequest.self)
+        let tokens = try await userService.authorize(req: MapperJwtWebDomain.toDomain(request))
+        return MapperJwtWebDomain.toWeb(tokens)
+    }
+
+    public func refreshAccessToken(req: Request) async throws -> JwtResponse {
+        let request = try req.content.decode(RefreshJwtRequest.self)
+        let tokens = try await userService.refreshAccessToken(req: MapperJwtWebDomain.toDomain(request))
+        return MapperJwtWebDomain.toWeb(tokens)
+    }
+
+    public func refreshRefreshToken(req: Request) async throws -> JwtResponse {
+        let request = try req.content.decode(RefreshJwtRequest.self)
+        let tokens = try await userService.refreshRefreshToken(req: MapperJwtWebDomain.toDomain(request))
+        return MapperJwtWebDomain.toWeb(tokens)
     }
     
     public func getUserById(req: Request) async throws -> UserResponse {
         guard let userId = req.parameters.get("userId", as: UUID.self) else {
-            throw GameError.invalidUserId
+            throw RequestError.invalidUserId
         }
         guard let user = try await userService.getUser(by: userId) else {
-            throw GameError.userNotFound
+            throw RequestError.userNotFound
+        }
+        return UserResponse(id: user.id, login: user.login)
+    }
+    
+    public func getMe(req: Request) async throws -> UserResponse {
+        guard let authorizedUser = req.auth.get(AuthorizedUser.self) else {
+            throw RequestError.userNotFound
+        }
+        guard let user = try await userService.getUser(by: authorizedUser.id) else {
+            throw RequestError.userNotFound
         }
         return UserResponse(id: user.id, login: user.login)
     }
